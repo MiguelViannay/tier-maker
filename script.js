@@ -227,11 +227,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const dropzone = tierEl.querySelector('.tier-dropzone');
         tier.images.forEach(imgObj => dropzone.appendChild(createImageElement(imgObj)));
         
-        if (!isTouchDevice) {
+        // Verifica se é uma tela maior (Desktop)
+const isDesktop = window.innerWidth >= 768;
+
+// Só ativa drag de tiers se não for touch E for uma tela grande
+        if (!isTouchDevice && isDesktop) {
+            tierEl.draggable = true;
+            tierEl.classList.add('cursor-move');
+            
             tierEl.addEventListener('dragstart', (e) => {
                 if (e.target.tagName.toLowerCase() === 'img') return;
                 draggedTierId = tier.id;
-                e.dataTransfer.effectAllowed = 'move';
+                
+                // CORREÇÃO: Setar dados para a Tier também
+                if (e.dataTransfer) {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', tier.id);
+                }
+                
                 setTimeout(() => tierEl.classList.add('tier-dragging'), 0);
             });
             tierEl.addEventListener('dragend', () => { draggedTierId = null; tierEl.classList.remove('tier-dragging'); tierEl.style.borderTop = ''; });
@@ -277,9 +290,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         wrapper.addEventListener('click', () => openImageDetails(imgObj.id));
 
+        // Substitua o evento dragstart atual por este:
         imgEl.addEventListener('dragstart', (e) => {
             draggedImageId = imgObj.id;
             e.stopPropagation(); 
+            
+            // CORREÇÃO CRÍTICA: O Polyfill e navegadores mobile exigem que você "set" algum dado!
+            if (e.dataTransfer) {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', imgObj.id); 
+            }
             
             // Só executa o fantasma personalizado no PC. No celular, o polyfill faz sozinho sem bugar.
             if (!isTouchDevice && e.dataTransfer && e.dataTransfer.setDragImage) {
@@ -391,10 +411,40 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
     // BLOCO 5: EVENTOS E FERRAMENTAS RESTANTES
     // ==========================================
+    // ==========================================
+    // CONTROLE DA BARRA DE PROGRESSO
+    // ==========================================
+    const updateLoading = (text, percent, show = true) => {
+        const spinner = document.getElementById('loading-spinner');
+        const textEl = document.getElementById('loading-text');
+        const progressEl = document.getElementById('loading-progress');
+        
+        if (!spinner || !textEl || !progressEl) return;
+
+        if (show) {
+            spinner.classList.remove('hidden');
+            spinner.classList.add('flex');
+            textEl.textContent = text;
+            progressEl.style.width = `${percent}%`;
+        } else {
+            setTimeout(() => {
+                spinner.classList.remove('flex');
+                spinner.classList.add('hidden');
+                progressEl.style.width = '0%';
+            }, 300); // Dá um tempinho para o usuário ver que deu 100%
+        }
+    };
+
+    // ==========================================
+    // NOVA FUNÇÃO DE ADICIONAR POR URL
+    // ==========================================
     const addImageFromUrl = (url) => {
         const list = state.tierLists[state.currentTierListId];
         if (!list || !url) return;
-        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+
+        // Usando corsproxy.io (mais robusto para Amazon) em vez do allorigins
+        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+        
         const img = new Image();
         img.crossOrigin = "Anonymous";
         
@@ -402,16 +452,25 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const canvas = document.createElement('canvas');
                 const scaleSize = 150 / img.width;
-                canvas.width = 150; canvas.height = img.height * scaleSize;
+                canvas.width = 150; 
+                canvas.height = img.height * scaleSize;
                 canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                
                 list.imageBank.push(createImageObject(canvas.toDataURL('image/jpeg', 0.8)));
-                saveState(); render();
+                saveState(); 
+                render();
             } catch (e) {
+                // Se o canvas falhar por "tainted canvas" (sujeira de CORS residual), salva a URL do proxy direto
                 list.imageBank.push(createImageObject(proxyUrl));
-                saveState(); render();
+                saveState(); 
+                render();
             }
         };
-        img.onerror = () => alert('Erro de CORS na miniatura.');
+
+        img.onerror = () => {
+            alert("A segurança da imagem original bloqueou o carregamento, mesmo com o proxy. Por favor, salve a imagem no seu PC/Celular e use o botão de Upload local.");
+        };
+
         img.src = proxyUrl;
     };
 

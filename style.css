@@ -17,7 +17,7 @@ img {
 /* 2. O card e a imagem NÃO PODEM rolar a tela ao serem tocados e arrastados */
 .drag-item,
 .drag-item img {
-  touch-action: none !important;
+  touch-action: pan-y !important; /* Permite scroll vertical, mas facilita o drag lateral e o longo toque */
   -webkit-user-select: none !important;
   user-select: none !important;
   -webkit-touch-callout: none !important;

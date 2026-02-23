@@ -1,4 +1,3 @@
-// sw.js - Service Worker básico para PWA
 const CACHE_NAME = 'ov-tierlist-v1';
 
 self.addEventListener('install', (event) => {
@@ -8,7 +7,17 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-    event.respondWith(caches.match(event.request).then((response) => {
-        return response || fetch(event.request);
-    }));
+    // SEGREDO AQUI: Ignora requisições de outros sites (proxies, amazon, google)
+    // Deixa o navegador resolver o CORS normalmente sem o Service Worker interferir
+    if (!event.request.url.startsWith(self.location.origin)) {
+        return; 
+    }
+
+    event.respondWith(
+        caches.match(event.request).then((response) => {
+            return response || fetch(event.request).catch((err) => {
+                console.warn('Modo Offline: Não foi possível buscar o recurso local.', event.request.url);
+            });
+        })
+    );
 });
