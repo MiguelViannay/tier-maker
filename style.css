@@ -38,6 +38,14 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 
 /* Garante que o toque segurado no mobile ative o Drag and Drop em vez de rolar a tela */
+/* Efeitos de Drag and Drop das Imagens */
+.dragging {
+  opacity: 0.5;
+  transform: scale(0.95);
+  pointer-events: none !important; /* MÁGICA DO MOBILE: Deixa o dropzone do fundo receber o card! */
+}
+
+/* Garante que o toque segurado no mobile não puxe a tela toda */
 .drag-item {
   touch-action: none;
   -webkit-user-select: none;

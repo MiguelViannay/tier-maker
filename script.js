@@ -238,9 +238,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const createTierElement = (tier, index, totalTiers) => {
         const tierEl = document.createElement('div');
-        tierEl.className = 'flex items-stretch transition-transform duration-200 cursor-move relative'; 
+        tierEl.className = 'flex items-stretch transition-transform duration-200 relative'; 
         tierEl.dataset.tierId = tier.id;
-        tierEl.draggable = true;
+        
+        // NOVO: Detector de Celular. Só permite arrastar a tier se for no PC!
+        const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+        if (!isTouchDevice) {
+            tierEl.draggable = true;
+            tierEl.classList.add('cursor-move');
+        }
 
         tierEl.innerHTML = `
             <div class="flex-shrink-0 w-24 md:w-32 flex flex-col items-center justify-center p-2 rounded-l-lg relative group">
@@ -264,6 +270,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const dropzone = tierEl.querySelector('.tier-dropzone');
         tier.images.forEach(imgObj => dropzone.appendChild(createImageElement(imgObj)));
         
+        // Eventos de arrastar a Tier (só funcionam se draggable for true no PC)
         tierEl.addEventListener('dragstart', (e) => {
             if (e.target.tagName.toLowerCase() === 'img') return;
             draggedTierId = tier.id;
@@ -486,19 +493,15 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const addDragAndDropEvents = (element) => {
-        element.addEventListener('dragover', e => { 
-            e.preventDefault(); 
-            element.classList.add('drag-over'); 
-        });
+        element.addEventListener('dragenter', e => e.preventDefault()); // NOVO: Garante o drop no mobile
+        element.addEventListener('dragover', e => { e.preventDefault(); element.classList.add('drag-over'); });
         element.addEventListener('dragleave', e => element.classList.remove('drag-over'));
         element.addEventListener('drop', e => { 
             e.preventDefault(); 
             element.classList.remove('drag-over'); 
             if (draggedImageId) {
-                // Aciona o radar passando as coordenadas X e Y do mouse/dedo
-                // No mobile (touches), pegamos a coordenada do primeiro dedo. No PC (clientX), do mouse.
-                const clientX = e.clientX || (e.changedTouches && e.changedTouches[0].clientX);
-                const clientY = e.clientY || (e.changedTouches && e.changedTouches[0].clientY);
+                const clientX = e.clientX || (e.changedTouches && e.changedTouches.length > 0 ? e.changedTouches[0].clientX : 0);
+                const clientY = e.clientY || (e.changedTouches && e.changedTouches.length > 0 ? e.changedTouches[0].clientY : 0);
                 
                 const afterElement = getDragAfterElement(element, clientX, clientY);
                 const afterImageId = afterElement ? afterElement.dataset.imgId : null;
