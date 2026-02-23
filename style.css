@@ -5,49 +5,60 @@ body {
   color: #e2e8f0;
 }
 
-/* Efeitos de Drag and Drop das Imagens */
+/* ========================================== */
+/* CORREÇÕES DEFINITIVAS PARA MOBILE (TOUCH)  */
+/* ========================================== */
+
+/* 1. Previne o comportamento padrão do Safari/Chrome de tentar "salvar" a imagem ao segurar */
+img {
+  -webkit-user-drag: none;
+}
+
+/* 2. O card e a imagem NÃO PODEM rolar a tela ao serem tocados e arrastados */
+.drag-item,
+.drag-item img {
+  touch-action: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+
+/* 3. O Fantasma gerado pelo dedo (Polyfill) NÃO PODE bloquear a caixa de drop embaixo dele! */
+.dnd-poly-drag-image,
+.dragging,
+.dragging * {
+  pointer-events: none !important;
+}
+
+/* ========================================== */
+/* EFEITOS VISUAIS E FOCO                     */
+/* ========================================== */
+
 .dragging {
   opacity: 0.5;
   transform: scale(0.95);
 }
+
 .drag-over {
   border-style: dashed !important;
   border-color: #4a5568 !important;
   transform: scale(1.02);
 }
 
-/* Efeito de arrastar as Tiers inteiras */
 .tier-dragging {
   opacity: 0.4;
   transform: scale(0.98);
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
 }
 
-/* Remove a seta do input[type=number] */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
 
-/* Efeito de foco para campos editáveis */
 [contenteditable]:focus {
   outline: 2px solid #4a90e2;
   background-color: #2d3748;
   border-radius: 4px;
-}
-
-/* Garante que o toque segurado no mobile ative o Drag and Drop em vez de rolar a tela */
-/* Efeitos de Drag and Drop das Imagens */
-.dragging {
-  opacity: 0.5;
-  transform: scale(0.95);
-  pointer-events: none !important; /* MÁGICA DO MOBILE: Deixa o dropzone do fundo receber o card! */
-}
-
-/* Garante que o toque segurado no mobile não puxe a tela toda */
-.drag-item {
-  touch-action: none;
-  -webkit-user-select: none;
-  user-select: none;
 }

@@ -1,14 +1,18 @@
-// Ativa o suporte a Drag and Drop no Celular de forma segura
+// Ativa o suporte a Drag and Drop no Celular de forma segura e responsiva
 if (typeof MobileDragDrop !== 'undefined') {
     MobileDragDrop.polyfill({
-        dragImageTranslateOverride: MobileDragDrop.scrollBehaviourDragImageTranslateOverride
+        dragImageTranslateOverride: MobileDragDrop.scrollBehaviourDragImageTranslateOverride,
+        holdToDrag: 250 // O SEGREDO DO MOBILE: Segure por 250ms para agarrar o card. Se for rápido, ele rola a tela!
     });
     window.addEventListener('touchmove', function() {}, {passive: false});
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Detector de dispositivo Móvel
+    const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
     // ==========================================
-    // BLOCO 1: ESTADO E DADOS (banco.js virtual)
+    // BLOCO 1: ESTADO E DADOS (IndexedDB)
     // ==========================================
     let state = { currentTierListId: null, tierLists: {} };
     let draggedImageId = null; 
@@ -20,12 +24,8 @@ document.addEventListener('DOMContentLoaded', () => {
         src: src, name: '', rating: 0.0, description: '', positionChange: 0
     });
 
-    // Apenas a nova função saveState. O loadState antigo morre, pois faremos isso na inicialização.
     const saveState = () => {
-        // Usa o localforage (IndexedDB) em vez do localStorage. Aguenta centenas de Megabytes!
-        localforage.setItem('tierListAppState', state).catch(err => {
-            console.error("Erro interno ao salvar no banco de dados massivo:", err);
-        });
+        localforage.setItem('tierListAppState', state).catch(err => console.error("Erro interno ao salvar:", err));
     };
 
     const createNewTierListData = (title) => ({
@@ -53,25 +53,20 @@ document.addEventListener('DOMContentLoaded', () => {
         return null;
     };
 
-
     // ==========================================
-    // BLOCO 2: IMPORTAÇÃO E EXPORTAÇÃO (io.js virtual)
+    // BLOCO 2: IMPORTAÇÃO E EXPORTAÇÃO
     // ==========================================
-    
-    // Exporta apenas as categorias e joga as imagens pro banco (COM TELA DE CARREGAMENTO)
     const exportTemplate = () => {
         const spinner = document.getElementById('loading-spinner');
         if (spinner) {
             spinner.querySelector('p').textContent = "Empacotando template... Aguarde.";
-            spinner.classList.remove('hidden');
-            spinner.classList.add('flex');
+            spinner.classList.remove('hidden'); spinner.classList.add('flex');
         }
 
-        // O setTimeout de 100ms dá tempo para o HTML renderizar a tela de carregamento antes de travar processando os dados
         setTimeout(() => {
             try {
                 const list = state.tierLists[state.currentTierListId];
-                if (!list) throw new Error("Nenhuma lista encontrada para exportar.");
+                if (!list) throw new Error("Nenhuma lista encontrada.");
 
                 const templateList = JSON.parse(JSON.stringify(list));
                 templateList.tiers.forEach(tier => {
@@ -83,7 +78,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 templateList.title = `Template: ${templateList.title}`;
                 
-                // MÁGICA DO BLOB: À prova de arquivos gigantes
                 const jsonString = JSON.stringify(templateList);
                 const blob = new Blob([jsonString], { type: "application/json;charset=utf-8" });
                 const url = URL.createObjectURL(blob);
@@ -95,27 +89,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
-                
                 setTimeout(() => URL.revokeObjectURL(url), 1000);
             } catch (err) {
                 alert("Erro ao exportar: " + err.message);
             } finally {
-                if (spinner) {
-                    spinner.classList.remove('flex');
-                    spinner.classList.add('hidden');
-                    spinner.querySelector('p').textContent = "Processando imagem..."; // Reseta o texto
-                }
+                if (spinner) { spinner.classList.remove('flex'); spinner.classList.add('hidden'); spinner.querySelector('p').textContent = "Processando..."; }
             }
         }, 100);
     };
 
-    // Importa o arquivo lendo "com calma"
     const importTemplate = (file) => {
         const spinner = document.getElementById('loading-spinner');
         if (spinner) { 
-            spinner.querySelector('p').textContent = "Analisando arquivo pesado... Pode levar alguns segundos.";
-            spinner.classList.remove('hidden'); 
-            spinner.classList.add('flex'); 
+            spinner.querySelector('p').textContent = "Analisando arquivo pesado...";
+            spinner.classList.remove('hidden'); spinner.classList.add('flex'); 
         }
 
         setTimeout(() => {
@@ -123,37 +110,21 @@ document.addEventListener('DOMContentLoaded', () => {
             reader.onload = (e) => {
                 try {
                     const importedList = JSON.parse(e.target.result);
-                    if (!importedList.tiers || !importedList.imageBank) {
-                        throw new Error("O arquivo não tem a estrutura oficial da OneViannay.");
-                    }
+                    if (!importedList.tiers || !importedList.imageBank) throw new Error("Estrutura inválida.");
                     
                     const newListId = `list-${Date.now()}`;
                     state.tierLists[newListId] = importedList;
                     state.currentTierListId = newListId;
-                    saveState(); 
-                    render();
-                    
-                    alert("Template da OneViannay importado com sucesso! Os cards estão no banco de imagens.");
+                    saveState(); render();
+                    alert("Template importado com sucesso!");
                 } catch(err) {
-                    console.error("Erro na leitura estrutural:", err);
-                    alert("Erro ao ler o arquivo JSON. Ele pode ser um arquivo antigo que foi cortado pela metade.\nDetalhe técnico: " + err.message);
+                    alert("Erro ao ler o arquivo JSON. Ele pode estar corrompido.");
                 } finally {
-                    if (spinner) { 
-                        spinner.classList.remove('flex'); 
-                        spinner.classList.add('hidden'); 
-                        spinner.querySelector('p').textContent = "Processando imagem..."; 
-                    }
-                    // Limpa o input invisível para você conseguir clicar e importar de novo se precisar
+                    if (spinner) { spinner.classList.remove('flex'); spinner.classList.add('hidden'); }
                     const fileInput = document.getElementById('import-json-input');
                     if(fileInput) fileInput.value = '';
                 }
             };
-            
-            reader.onerror = () => {
-                alert("O navegador falhou ao tentar ler o arquivo local do seu PC.");
-                if (spinner) { spinner.classList.remove('flex'); spinner.classList.add('hidden'); }
-            };
-
             reader.readAsText(file);
         }, 100);
     };
@@ -164,29 +135,22 @@ document.addEventListener('DOMContentLoaded', () => {
         
         let allImages = [...list.imageBank];
         list.tiers.forEach(t => allImages.push(...t.images));
-        
         if (allImages.length === 0) return alert('Sua lista não tem imagens para exportar.');
 
         const grid = document.createElement('div');
         grid.style.position = 'absolute'; grid.style.left = '-9999px'; grid.style.width = '800px';
-        grid.style.display = 'flex'; grid.style.flexWrap = 'wrap'; grid.style.gap = '15px';
-        grid.style.padding = '30px'; grid.style.backgroundColor = '#1a202c';
+        grid.style.display = 'flex'; grid.style.flexWrap = 'wrap'; grid.style.gap = '15px'; grid.style.padding = '30px'; grid.style.backgroundColor = '#1a202c';
 
         allImages.forEach(imgObj => {
             const img = document.createElement('img');
-            img.src = imgObj.src;
-            img.style.width = '120px'; img.style.height = '120px';
+            img.src = imgObj.src; img.style.width = '120px'; img.style.height = '120px';
             img.style.objectFit = 'cover'; img.style.borderRadius = '8px';
             grid.appendChild(img);
         });
 
         document.body.appendChild(grid);
         const spinner = document.getElementById('loading-spinner');
-        if(spinner) { 
-            spinner.querySelector('p').textContent = "Gerando Grade de Cards...";
-            spinner.classList.remove('hidden'); 
-            spinner.classList.add('flex'); 
-        }
+        if(spinner) { spinner.classList.remove('hidden'); spinner.classList.add('flex'); }
 
         html2canvas(grid, { backgroundColor: '#1a202c', scale: 2, useCORS: true }).then(canvas => {
             const link = document.createElement('a');
@@ -194,20 +158,15 @@ document.addEventListener('DOMContentLoaded', () => {
             link.href = canvas.toDataURL('image/png');
             link.click();
             document.body.removeChild(grid);
-            if(spinner) { 
-                spinner.classList.remove('flex'); 
-                spinner.classList.add('hidden'); 
-                spinner.querySelector('p').textContent = "Processando imagem...";
-            }
+            if(spinner) { spinner.classList.remove('flex'); spinner.classList.add('hidden'); }
         }).catch(() => {
             alert("Falha ao desenhar a grade de cards.");
             if(spinner) { spinner.classList.remove('flex'); spinner.classList.add('hidden'); }
         });
     };
 
-
     // ==========================================
-    // BLOCO 3: RENDERIZAÇÃO DA INTERFACE (ui.js virtual)
+    // BLOCO 3: RENDERIZAÇÃO DA INTERFACE
     // ==========================================
     const render = () => {
         const currentList = state.tierLists[state.currentTierListId];
@@ -232,7 +191,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             addDragAndDropEvents(imageBankDropzone);
         }
-        
         renderManageListModal();
     };
 
@@ -241,8 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tierEl.className = 'flex items-stretch transition-transform duration-200 relative'; 
         tierEl.dataset.tierId = tier.id;
         
-        // NOVO: Detector de Celular. Só permite arrastar a tier se for no PC!
-        const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+        // Desativa o drag das tiers no Mobile para não atrapalhar o scroll
         if (!isTouchDevice) {
             tierEl.draggable = true;
             tierEl.classList.add('cursor-move');
@@ -270,39 +227,36 @@ document.addEventListener('DOMContentLoaded', () => {
         const dropzone = tierEl.querySelector('.tier-dropzone');
         tier.images.forEach(imgObj => dropzone.appendChild(createImageElement(imgObj)));
         
-        // Eventos de arrastar a Tier (só funcionam se draggable for true no PC)
-        tierEl.addEventListener('dragstart', (e) => {
-            if (e.target.tagName.toLowerCase() === 'img') return;
-            draggedTierId = tier.id;
-            e.dataTransfer.effectAllowed = 'move';
-            setTimeout(() => tierEl.classList.add('tier-dragging'), 0);
-        });
-        tierEl.addEventListener('dragend', () => { draggedTierId = null; tierEl.classList.remove('tier-dragging'); tierEl.style.borderTop = ''; });
-        tierEl.addEventListener('dragover', (e) => { e.preventDefault(); if (draggedTierId && draggedTierId !== tier.id) tierEl.style.borderTop = '4px solid #4a90e2'; });
-        tierEl.addEventListener('dragleave', () => tierEl.style.borderTop = '');
-        tierEl.addEventListener('drop', (e) => { e.preventDefault(); tierEl.style.borderTop = ''; if (draggedTierId && draggedTierId !== tier.id) reorderTiers(draggedTierId, tier.id); });
+        if (!isTouchDevice) {
+            tierEl.addEventListener('dragstart', (e) => {
+                if (e.target.tagName.toLowerCase() === 'img') return;
+                draggedTierId = tier.id;
+                e.dataTransfer.effectAllowed = 'move';
+                setTimeout(() => tierEl.classList.add('tier-dragging'), 0);
+            });
+            tierEl.addEventListener('dragend', () => { draggedTierId = null; tierEl.classList.remove('tier-dragging'); tierEl.style.borderTop = ''; });
+            tierEl.addEventListener('dragover', (e) => { e.preventDefault(); if (draggedTierId && draggedTierId !== tier.id) tierEl.style.borderTop = '4px solid #4a90e2'; });
+            tierEl.addEventListener('dragleave', () => tierEl.style.borderTop = '');
+            tierEl.addEventListener('drop', (e) => { e.preventDefault(); tierEl.style.borderTop = ''; if (draggedTierId && draggedTierId !== tier.id) reorderTiers(draggedTierId, tier.id); });
+        }
 
         addDragAndDropEvents(dropzone);
         tierEl.querySelector('.tier-label').addEventListener('blur', (e) => updateTierProperty(tier.id, 'label', e.target.textContent));
         tierEl.querySelector('.tier-delete-btn').addEventListener('click', () => deleteTier(tier.id));
         tierEl.querySelector('.tier-up-btn').addEventListener('click', () => moveTierButton(index, -1));
         tierEl.querySelector('.tier-down-btn').addEventListener('click', () => moveTierButton(index, 1));
-        
-        const colorPicker = tierEl.querySelector('.tier-color-picker');
-        colorPicker.addEventListener('input', (e) => tierHeader.style.backgroundColor = e.target.value);
-        colorPicker.addEventListener('change', (e) => { updateTierProperty(tier.id, 'color', e.target.value); });
+        tierEl.querySelector('.tier-color-picker').addEventListener('input', (e) => tierHeader.style.backgroundColor = e.target.value);
+        tierEl.querySelector('.tier-color-picker').addEventListener('change', (e) => { updateTierProperty(tier.id, 'color', e.target.value); });
 
         return tierEl;
     };
 
     const createImageElement = (imgObj) => {
         const wrapper = document.createElement('div');
-        // Adicionada a classe 'drag-item' para o CSS do mobile e identificador de reordenação
         wrapper.className = 'drag-item relative group w-20 h-20 md:w-24 md:h-24 cursor-pointer';
-        wrapper.dataset.imgId = imgObj.id; // NOVO: Guarda o ID no HTML para sabermos quem é quem
+        wrapper.dataset.imgId = imgObj.id; // Chave para a matemática de reordenação
 
         const imgEl = document.createElement('img');
-        // ... (o resto da função continua exatamente igual)
         imgEl.src = imgObj.src;
         imgEl.className = 'w-full h-full object-cover rounded-lg shadow-md hover:ring-4 hover:ring-blue-500 transition-all';
         imgEl.draggable = true;
@@ -313,14 +267,9 @@ document.addEventListener('DOMContentLoaded', () => {
         deleteBtn.onclick = (e) => { e.stopPropagation(); deleteImage(imgObj.id); };
 
         const pos = Number(imgObj.positionChange || 0);
-        let badge = '';
-        if (pos > 0) {
-            badge = `<div class="absolute top-0 left-0 bg-green-900/90 text-green-400 text-[10px] font-bold px-1.5 py-0.5 rounded-br-lg rounded-tl-lg z-10" title="Subiu ${pos}"><i class="fas fa-arrow-up"></i> ${pos}</div>`;
-        } else if (pos < 0) {
-            badge = `<div class="absolute top-0 left-0 bg-red-900/90 text-red-400 text-[10px] font-bold px-1.5 py-0.5 rounded-br-lg rounded-tl-lg z-10" title="Caiu ${Math.abs(pos)}"><i class="fas fa-arrow-down"></i> ${Math.abs(pos)}</div>`;
-        } else {
-            badge = `<div class="absolute top-0 left-0 bg-gray-800/90 text-gray-400 text-[10px] font-bold px-1.5 py-0.5 rounded-br-lg rounded-tl-lg z-10" title="Manteve"><i class="fas fa-minus"></i></div>`;
-        }
+        let badge = pos > 0 ? `<div class="absolute top-0 left-0 bg-green-900/90 text-green-400 text-[10px] font-bold px-1.5 py-0.5 rounded-br-lg rounded-tl-lg z-10"><i class="fas fa-arrow-up"></i> ${pos}</div>` 
+                  : pos < 0 ? `<div class="absolute top-0 left-0 bg-red-900/90 text-red-400 text-[10px] font-bold px-1.5 py-0.5 rounded-br-lg rounded-tl-lg z-10"><i class="fas fa-arrow-down"></i> ${Math.abs(pos)}</div>` 
+                  : `<div class="absolute top-0 left-0 bg-gray-800/90 text-gray-400 text-[10px] font-bold px-1.5 py-0.5 rounded-br-lg rounded-tl-lg z-10"><i class="fas fa-minus"></i></div>`;
 
         wrapper.innerHTML = badge;
         wrapper.appendChild(imgEl);
@@ -332,31 +281,34 @@ document.addEventListener('DOMContentLoaded', () => {
             draggedImageId = imgObj.id;
             e.stopPropagation(); 
             
-            // FANTASMA DO MOUSE: Faz a imagem aparecer no cursor em vez do quadrado padrão!
-            if (e.dataTransfer && e.dataTransfer.setDragImage) {
+            // Só executa o fantasma personalizado no PC. No celular, o polyfill faz sozinho sem bugar.
+            if (!isTouchDevice && e.dataTransfer && e.dataTransfer.setDragImage) {
                 const rect = wrapper.getBoundingClientRect();
                 e.dataTransfer.setDragImage(wrapper, rect.width / 2, rect.height / 2);
             }
             
             setTimeout(() => wrapper.classList.add('dragging'), 0);
         });
-        imgEl.addEventListener('dragend', () => { wrapper.classList.remove('dragging'); draggedImageId = null; });
+        
+        imgEl.addEventListener('dragend', () => { 
+            wrapper.classList.remove('dragging'); 
+            draggedImageId = null; 
+        });
 
         return wrapper;
     };
 
-    // Função "Radar": Descobre em qual posição exata do meio da lista você soltou o card
+    // ==========================================
+    // BLOCO 4: LÓGICA DE DRAG & DROP E POSIÇÕES
+    // ==========================================
+    
+    // O "Radar": Acha o exato card que está depois de onde você soltou o dedo/mouse
     const getDragAfterElement = (container, x, y) => {
-        // Pega todos os cards daquela tier, exceto o que está flutuando no mouse
         const draggableElements = [...container.querySelectorAll('.drag-item:not(.dragging)')];
-        
         return draggableElements.reduce((closest, child) => {
             const box = child.getBoundingClientRect();
-            // Verifica se o mouse está na mesma linha vertical do card
             const isSameRow = y >= box.top - 10 && y <= box.bottom + 10;
-            
             if (isSameRow) {
-                // Calcula a distância do centro do card
                 const offset = x - (box.left + box.width / 2);
                 if (offset < 0 && offset > closest.offset) {
                     return { offset: offset, element: child };
@@ -366,9 +318,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }, { offset: Number.NEGATIVE_INFINITY }).element;
     };
 
-    // ==========================================
-    // BLOCO 4: LÓGICA CORE E EVENTOS (main.js virtual)
-    // ==========================================
     const reorderTiers = (draggedId, targetId) => {
         const list = state.tierLists[state.currentTierListId];
         const draggedIdx = list.tiers.findIndex(t => t.id === draggedId);
@@ -391,39 +340,78 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // NOVA FUNÇÃO FORTE PARA TRATAR IMAGENS DE URL (Higienização Base64)
+    const moveImage = (imgId, targetDropzone, afterImgId = null) => {
+        const list = state.tierLists[state.currentTierListId];
+        const targetTierId = targetDropzone.closest('[data-tier-id]')?.dataset.tierId;
+        const imgObj = findImageById(imgId);
+        if (!imgObj) return;
+
+        list.imageBank = list.imageBank.filter(img => img.id !== imgId);
+        list.tiers.forEach(tier => { tier.images = tier.images.filter(img => img.id !== imgId); });
+        
+        let targetArray = targetTierId ? list.tiers.find(t => t.id === targetTierId)?.images : list.imageBank;
+
+        if (targetArray) {
+            if (afterImgId) {
+                const insertIndex = targetArray.findIndex(img => img.id === afterImgId);
+                if (insertIndex > -1) {
+                    targetArray.splice(insertIndex, 0, imgObj);
+                } else {
+                    targetArray.push(imgObj);
+                }
+            } else {
+                targetArray.push(imgObj);
+            }
+        }
+        
+        saveState(); 
+        requestAnimationFrame(() => render()); 
+    };
+
+    const addDragAndDropEvents = (element) => {
+        element.addEventListener('dragenter', e => e.preventDefault()); // Essencial pro celular!
+        element.addEventListener('dragover', e => { e.preventDefault(); element.classList.add('drag-over'); });
+        element.addEventListener('dragleave', e => element.classList.remove('drag-over'));
+        element.addEventListener('drop', e => { 
+            e.preventDefault(); 
+            element.classList.remove('drag-over'); 
+            if (draggedImageId) {
+                // Pega as coordenadas X e Y do mouse (PC) ou do Dedo (Mobile)
+                const clientX = e.clientX || (e.changedTouches && e.changedTouches.length > 0 ? e.changedTouches[0].clientX : 0);
+                const clientY = e.clientY || (e.changedTouches && e.changedTouches.length > 0 ? e.changedTouches[0].clientY : 0);
+                
+                const afterElement = getDragAfterElement(element, clientX, clientY);
+                const afterImageId = afterElement ? afterElement.dataset.imgId : null;
+                
+                moveImage(draggedImageId, element, afterImageId);
+            } 
+        });
+    };
+
+    // ==========================================
+    // BLOCO 5: EVENTOS E FERRAMENTAS RESTANTES
+    // ==========================================
     const addImageFromUrl = (url) => {
         const list = state.tierLists[state.currentTierListId];
         if (!list || !url) return;
-        
-        // Proxy para tentar liberar o CORS
         const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-        
         const img = new Image();
-        img.crossOrigin = "Anonymous"; // Pede permissão explícita
+        img.crossOrigin = "Anonymous";
         
         img.onload = () => {
             try {
-                // Tenta forçar a conversão para Base64. Se o navegador deixar, a imagem fica 100% segura.
                 const canvas = document.createElement('canvas');
                 const scaleSize = 150 / img.width;
-                canvas.width = 150; 
-                canvas.height = img.height * scaleSize;
+                canvas.width = 150; canvas.height = img.height * scaleSize;
                 canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-                
-                const safeBase64Data = canvas.toDataURL('image/jpeg', 0.8);
-                list.imageBank.push(createImageObject(safeBase64Data));
+                list.imageBank.push(createImageObject(canvas.toDataURL('image/jpeg', 0.8)));
                 saveState(); render();
             } catch (e) {
-                // Se falhar (Tainted Canvas), usa o link do Proxy como string.
-                console.warn("Segurança do navegador bloqueou a conversão da imagem. Usando proxy URL como alternativa.");
                 list.imageBank.push(createImageObject(proxyUrl));
                 saveState(); render();
             }
         };
-        img.onerror = () => {
-            alert('A imagem bloqueou o carregamento (Erro de Servidor/CORS). Tente salvar a imagem no seu PC e adicionar pelo botão de Upload.');
-        };
+        img.onerror = () => alert('Erro de CORS na miniatura.');
         img.src = proxyUrl;
     };
 
@@ -451,67 +439,13 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const deleteImage = (imgId) => {
-        if (!confirm('Remover este item permanentemente?')) return;
+        if (!confirm('Remover este item?')) return;
         const list = state.tierLists[state.currentTierListId];
         list.imageBank = list.imageBank.filter(img => img.id !== imgId);
         list.tiers.forEach(tier => { tier.images = tier.images.filter(img => img.id !== imgId); });
         saveState(); render();
     };
 
-    // Agora recebe um terceiro parâmetro: o card que deve ficar DEPOIS do card que você moveu
-    const moveImage = (imgId, targetDropzone, afterImgId = null) => {
-        const list = state.tierLists[state.currentTierListId];
-        const targetTierId = targetDropzone.closest('[data-tier-id]')?.dataset.tierId;
-        const imgObj = findImageById(imgId);
-        if (!imgObj) return;
-
-        // Remove do local antigo
-        list.imageBank = list.imageBank.filter(img => img.id !== imgId);
-        list.tiers.forEach(tier => { tier.images = tier.images.filter(img => img.id !== imgId); });
-        
-        // Define o array de destino (Tier ou Banco de Imagens)
-        let targetArray = targetTierId ? list.tiers.find(t => t.id === targetTierId)?.images : list.imageBank;
-
-        if (targetArray) {
-            if (afterImgId) {
-                // Se o radar detectou que você soltou no meio, insere na posição exata (splice)
-                const insertIndex = targetArray.findIndex(img => img.id === afterImgId);
-                if (insertIndex > -1) {
-                    targetArray.splice(insertIndex, 0, imgObj);
-                } else {
-                    targetArray.push(imgObj);
-                }
-            } else {
-                // Se soltou no final da linha ou num espaço vazio, só adiciona no final
-                targetArray.push(imgObj);
-            }
-        }
-        
-        saveState(); 
-        // Pequeno truque para não piscar a tela e perder o scroll ao reordenar
-        requestAnimationFrame(() => render()); 
-    };
-
-    const addDragAndDropEvents = (element) => {
-        element.addEventListener('dragenter', e => e.preventDefault()); // NOVO: Garante o drop no mobile
-        element.addEventListener('dragover', e => { e.preventDefault(); element.classList.add('drag-over'); });
-        element.addEventListener('dragleave', e => element.classList.remove('drag-over'));
-        element.addEventListener('drop', e => { 
-            e.preventDefault(); 
-            element.classList.remove('drag-over'); 
-            if (draggedImageId) {
-                const clientX = e.clientX || (e.changedTouches && e.changedTouches.length > 0 ? e.changedTouches[0].clientX : 0);
-                const clientY = e.clientY || (e.changedTouches && e.changedTouches.length > 0 ? e.changedTouches[0].clientY : 0);
-                
-                const afterElement = getDragAfterElement(element, clientX, clientY);
-                const afterImageId = afterElement ? afterElement.dataset.imgId : null;
-                
-                moveImage(draggedImageId, element, afterImageId);
-            } 
-        });
-    };
-
-    // Estatísticas (DataLovers)
     const openImageDetails = (imgId) => {
         const imgObj = findImageById(imgId);
         if (!imgObj) return;
@@ -584,7 +518,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    // Listeners de Eventos Seguros
     const addSafeListener = (id, event, handler) => { const el = document.getElementById(id); if (el) el.addEventListener(event, handler); };
 
     addSafeListener('add-tier-btn', 'click', () => {
@@ -628,7 +561,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const spinner = document.getElementById('loading-spinner');
         if(spinner) { spinner.classList.remove('hidden'); spinner.classList.add('flex'); }
         const content = document.querySelector('.md\\:flex-row');
-        
         html2canvas(content, { backgroundColor: '#1a202c', scale: 2, useCORS: true }).then(canvas => {
             const link = document.createElement('a');
             const title = document.getElementById('tierlist-title')?.textContent || 'TierList';
@@ -642,44 +574,33 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Inicialização
     // ==========================================
-    // INICIALIZAÇÃO ASSÍNCRONA (Aguardando o Banco de Dados)
+    // INICIALIZAÇÃO ASSÍNCRONA 
     // ==========================================
     const init = async () => {
         try {
-            // Tenta buscar os dados salvos no IndexedDB
             const savedState = await localforage.getItem('tierListAppState');
-            
             if (savedState) {
-                state = savedState; // O localforage já converte o JSON automaticamente!
-                
-                // Rotina de segurança para atualizar as imagens antigas, se houver
+                state = savedState; 
                 const upgradeImages = (imgArray) => imgArray.map(img => typeof img === 'string' ? createImageObject(img) : img);
                 Object.values(state.tierLists).forEach(list => {
                     list.imageBank = upgradeImages(list.imageBank || []);
                     list.tiers.forEach(tier => { tier.images = upgradeImages(tier.images || []); });
                 });
             } else {
-                // Se for a primeira vez que a pessoa abre o site (sem dados salvos)
                 const defaultListId = `list-${Date.now()}`;
                 state = {
                     currentTierListId: defaultListId,
                     tierLists: { [defaultListId]: createNewTierListData('Anime OneViannay Rewards') }
                 };
             }
-            
             if (!state.currentTierListId || !state.tierLists[state.currentTierListId]) {
                 state.currentTierListId = Object.keys(state.tierLists)[0] || null;
             }
-            
-            // Renderiza a tela somente após carregar os dados
             render();
-            
         } catch (err) {
             console.error("Erro fatal ao carregar o banco de dados inicial:", err);
         }
     };
-    
     init();
-}); // <-- Fim do DOMContentLoaded
+});
